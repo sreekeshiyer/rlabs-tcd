@@ -1,0 +1,271 @@
+---
+title: "Tennis ATP prediction"
+output:
+  pdf_document: default
+  html_notebook: default
+---
+
+__Timeline__:
+
+* 5-10 mins discussion about how to solve the problem
+* 20-30 mins independent implementation in groups of 3 students
+* 10-20 mins merging of the code in a single submission
+* one student uploads the group solution to Blackboard
+
+
+
+
+__Group Number__:
+
+__Student name and student number__:
+
+* 
+* 
+* 
+* 
+* 
+*
+*
+
+```{r, warning=F, message=F}
+# install.packages("naive_bayes")# you only need this command once
+# install.packages("readxl")   # you only need this command once
+
+library(readxl)
+df2025 <- read_excel("2025.xlsx")
+df2026 <- read_excel("2026.xlsx")
+cols <- c(
+  "ATP", "Date", "Tournament",
+  "Series", "Court", "Surface", "Round",
+  "Best of", "Winner", "Loser", "WRank", "LRank",
+  "WPts", "LPts", "Wsets", "Lsets",  "AvgW", "AvgL", "Comment"
+)
+df2025 = df2025[cols]
+df2026 = df2026[cols]
+# join the two datasets
+df <- rbind(df2025, df2026)
+
+# Convert date to a date
+df$Date <- as.Date(df$Date)
+# Convert numeric columns
+num_cols <- c(
+  "ATP", "WRank", "LRank",
+  "WPts", "LPts",
+  "Wsets", "Lsets",
+  "Best of","AvgW", "AvgL"
+)
+for (col in num_cols) {
+  if (col %in% names(df)) {
+    df[[col]] <- as.numeric(df[[col]])
+  }
+}
+# Convert categorical variables
+cat_cols <- c(
+  "Tournament", "Series", "Court",
+  "Round", "Winner", "Loser", "Surface"
+)
+for (col in cat_cols) {
+  if (col %in% names(df)) {
+    df[[col]] <- as.factor(df[[col]])
+  }
+}
+head(df)
+```
+
+## Exercise
+
+Consider the dataset containing ATP tennis matches from 2025 and 2026. Each row corresponds to a completed match and includes information about the players, rankings, ATP points, tournament characteristics, and the match outcome.
+
+__Description__:
+
+- **Date**: date of the match
+- **Tournament**: tournament name
+- **Series**: tournament category (Grand Slam, Masters, etc.)
+- **Court**: indoor/outdoor court
+- **Surface**: type of surface (clay, hard, carpet or grass)
+- **Round**: tournament round
+- **Winner**, **Loser**: winner and loser of the match
+- **WRank**, **LRank**: ATP rankings at the start of the tournament
+- **WPts**, **LPts**: ATP ranking points at the start of the tournament
+- **AvgW**, **AvgL**: average bookmaker odds for the winner and loser
+- Other variables describing match details.
+
+
+
+__Task__:
+
+Build a **Naive Bayes classifier** to predict match outcomes at the "1st Round" of the 2026 US Open. Use all matches played before 
+30 August 2026 as the training set and all matches played on or after 30 August 2026 as the test set.
+
+Your objective is to:
+
+1. Split the data into training and test sets using the date `2026-08-30`.
+2. Using only the attributes
+
+"WRank", "LRank" , "WPts", "LPts" and "Surface", 
+
+build a Naive Bayes classifier to predict the outcome of a tennis match.
+For each match in the test set, compute: 
+
+- ProbWinner: the predicted probability that the player listed in the Winner column wins the match;
+- PredictedWinner: the player selected by the classifier according to the 0-1 loss decision rule, i.e., choose the player with the highest  probability. Equivalently, predict the player in the Winner column when ProbWinner > 0.5, and the player in the Loser column otherwise.
+
+The output should have the following form:
+          Winner                 Loser           ProbWinner     PredictedWinner
+         Rinderknech A.       Shimabukuro S.      0.618       Rinderknech A.
+           Majchrzak K.        Medjedovic H.      0.510         Majchrzak K.
+                  Wu Y.            Walton A.      0.474            Walton A.
+      Merida Aguilar D.         Fucsovics M.      0.617    Merida Aguilar D.
+             Lehecka J.     Carreno Busta P.      0.644           Lehecka J.
+             Prizmic D.        Shevchenko A.      0.494        Shevchenko A.
+....
+
+Note: You will need to think carefully about how to transform the match prediction task into a binary classification problem. 
+
+3. Using the bookmaker odds (`AvgW`, `AvgL`), predict the winner as the player with the lower average odds (the bookmaker favourite).
+Compute the bookmaker prediction accuracy on the same test set.
+4. Compare the predictive performance of the Naive Bayes classifier, and the bookmaker benchmark.
+
+__DATA__:
+```{r}
+df[sample(nrow(df), 12),c("WRank", "LRank" , "WPts", "LPts", "Surface","Winner","Loser")]
+```
+
+
+__Hints__:
+
+- Useful commands
+
+
+```{r}
+#library("naivebayes")
+#mydf_train$Class=as.factor(mydf_train$Class)
+#mydf_train$CatFeature=as.factor(mydf_train$CatFeature)
+#mydf_train$NumFeature=as.numeric(mydf_train$NumFeature)
+#model = naive_bayes(Class~.,mydf_train)
+#summary(model)
+```
+
+
+- Copy the code from your rpevious lab if you do not recall R commands.
+
+- To obtain predicted probabilities:
+
+```{r}
+#mydf_test$CatFeature=factor(mydf_test$CatFeature,levels(mydf_train$CatFeature))
+#mydf_test$NumFeature=as.numeric(mydf_test$NumFeature)
+#head(predictprob)
+```
+
+- The bookmaker prediction is obtained by selecting the player associated with the lower odds.
+
+- Classification accuracy can be computed using:
+
+```{r}
+##  mean(predicted == actual)
+```
+
+
+## My solution
+
+```{r}
+# install.packages("naive_bayes")# you only need this command once
+# install.packages("readxl")   # you only need this command once
+library(readxl)
+
+# load data
+df2025 <- read_excel("2025.xlsx")
+df2026 <- read_excel("2026.xlsx")
+
+# some of the attributes
+cols <- c(
+  "ATP", "Date", "Tournament",
+  "Series", "Court", "Surface", "Round",
+  "Best of", "Winner", "Loser", "WRank", "LRank",
+  "WPts", "LPts", "Wsets", "Lsets",  "AvgW", "AvgL", "Comment"
+)
+
+df2025 <- df2025[, cols]
+df2026 <- df2026[, cols]
+# join data
+df <- rbind(df2025, df2026)
+head(df)
+
+
+# convert date column
+df$Date <- as.Date(df$Date)
+
+# split into training and test sets
+cutoff_date <- as.Date("2026-08-30")
+
+df_train <- df[df$Date < cutoff_date, ]
+df_test  <- df[df$Date >= cutoff_date, ]
+
+# we only focus on US Open first round matches
+df_test <- df_test[
+ df_test$Tournament== "US Open" &
+  df_test$Round == "1st Round",
+]
+
+# columns used by the classifier
+cols_model <- c(
+  "WRank", "LRank", "Winner",
+  "Loser", "WPts", "LPts", "Surface"
+)
+
+df_train <- df_train[, cols_model]
+df_test  <- df_test[, cols_model]
+# dimensions
+dim(df_train)
+dim(df_test)
+
+head(df_test)
+
+
+
+#library("naivebayes")
+#mydf_train$Class=as.factor(mydf_train$Class)
+#mydf_train$CatFeature=as.factor(mydf_train$CatFeature)
+#mydf_train$NumFeature=as.numeric(mydf_train$NumFeature)
+#model = naive_bayes(Class~.,mydf_train)
+#summary(model)
+
+
+#mydf_test$CatFeature=factor(mydf_test$CatFeature,levels(mydf_train$CatFeature))
+#mydf_test$NumFeature=as.numeric(mydf_test$NumFeature)
+#head(predictprob)
+
+
+
+
+```
+
+
+
+
+
+
+
+
+
+__Homework__ 1:
+
+Using the fitted Naive Bayes model, simulate the remaining rounds of the 2026 US Open and estimate:
+
+1. The most likely finalist pair.
+2. The predicted tournament champion.
+
+Describe how you would approach this problem. In particular, explain how the match win probabilities produced by the Naive Bayes model can be used in a probabilistic (random) simulation of the tournament draw.
+
+Hint: For each match, use the model to estimate the probability that a player wins. Then randomly sample the match outcome according to that probability, advance the winner to the next round, and repeat until a champion is determined. By simulating the entire tournament many times, you can estimate the probabilities of reaching the final and winning the tournament for each player.
+
+__Homework 2__
+
+Include additional attributes (e.g., Court, Series, and other relevant variables that were not used previously) and investigate whether they improve the classifier's predictive performance.
+
+Only variables that are known before the match is played may be used as predictors. For example, statistics such as Wsets and Lsets can be included only if they are computed from matches that the players completed prior to the match being predicted.
+
+__Homework 3__
+
+Apply a Sum-Product Network (SPN) to the same prediction problem and compare its performance with that of the NB classifier. Does the SPN provide an improvement in predictive performance?
+

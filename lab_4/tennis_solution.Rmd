@@ -1,0 +1,147 @@
+---
+title: "Tennis_solution"
+output: html_notebook
+---
+
+
+```{r}
+# install.packages("naive_bayes")# you only need this command once
+# install.packages("readxl")   # you only need this command once
+library(readxl)
+
+# Load data
+df2025 <- read_excel("2025.xlsx")
+df2026 <- read_excel("2026.xlsx")
+
+# relevant attributes
+cols <- c(
+  "ATP", "Date", "Tournament",
+  "Series", "Court", "Surface", "Round",
+  "Best of", "Winner", "Loser", "WRank", "LRank",
+  "WPts", "LPts", "Wsets", "Lsets",  "AvgW", "AvgL", "Comment"
+)
+
+df2025 <- df2025[, cols]
+df2026 <- df2026[, cols]
+# join data
+df <- rbind(df2025, df2026)
+
+# convert date column
+df$Date <- as.Date(df$Date)
+
+# split into training and test sets
+cutoff_date <- as.Date("2026-08-30")
+
+df_train <- df[df$Date < cutoff_date, ]
+df_test  <- df[df$Date >= cutoff_date, ]
+
+# we only focus on US Open first round matches
+df_test <- df_test[
+ df_test$Tournament== "US Open" &
+  df_test$Round == "1st Round",
+]
+
+# columns used by the classifier
+cols_model <- c(
+  "WRank", "LRank", "Winner",
+  "Loser", "WPts", "LPts", "Surface"
+)
+
+df_train <- df_train[, cols_model]
+df_test  <- df_test[, cols_model]
+# dimensions
+dim(df_train)
+dim(df_test)
+
+head(df_test)
+print(df_test, n = Inf)
+
+```
+
+The below R function takes a tennis dataset where matches are only listed from the winner's perspective and symmetrises it into two rows per match so a classification model can learn fairly from both sides.
+
+Consider for instance (67 42 Mannarino A. Tirante T.A. 895 1125 Hard). Mannarino was the winner (WRank = 67, WPts = 895) and Tirante was the loser (LRank = 42, LPts = 1125) on a Hard court.
+
+We represent this information by doubling the rows in the dataset and feeding both perspectives into the training loop:
+
+* Row 1 (Class = 1 or T) is calculated as Winner minus Loser (Rankdiff = 67 - 42 = 25, Ptsdiff = 895 - 1125 = -230), representing the perspective where the player listed first won the match.
+
+* Row 2 (Class = 0 or F): The exact reverse (Loser minus Winner), achieved by flipping the signs (Rankdiff = -25, Ptsdiff = 230). This represents the perspective where the loser is listed first.
+
+For testing or predictions (train = FALSE), we keep only one row per match (the original winner-first perspective with Class = 1), because we want to evaluate real, unseen matchups in the exact format they naturally occur without duplicating test cases or artificially inflating evaluation metrics. In the test case we assume we do not know the Winner or Loser.
+
+
+
+```{r}
+
+mycols=c("Rankdiff","Ptsdiff", "Surface","Class")
+make_attributes <- function(df,mycols,train){
+  m=1
+  if (train==T){
+    m=2}
+  dfnew  = matrix(c(rep.int(NA,length(mycols))),nrow=nrow(df)*m,ncol=length(mycols))  
+  
+  for (i in 1:nrow(df)){
+
+    if (train==T){
+    dfnew[i*2-1,1]=as.numeric(df$WRank[i])-as.numeric(df$LRank[i])
+    dfnew[i*2-1,2]=as.numeric(df$WPts[i])-as.numeric(df$LPts[i])
+    dfnew[i*2-1,3]=(df$Surface[i])
+    dfnew[i*2-1,4]=T
+    dfnew[i*2,1]=-(as.numeric(df$WRank[i])-as.numeric(df$LRank[i]))
+    dfnew[i*2,2]=-(as.numeric(df$WPts[i])-as.numeric(df$LPts[i]))
+    dfnew[i*2,3]=(df$Surface[i])
+    dfnew[i*2,4]=F
+    }
+    else{
+    dfnew[i,1]=as.numeric(df$WRank[i])-as.numeric(df$LRank[i])
+    dfnew[i,2]=as.numeric(df$WPts[i])-as.numeric(df$LPts[i])
+    dfnew[i,3]=(df$Surface[i])
+    dfnew[i,4]=T
+    }
+  }
+  dfnew = as.data.frame(dfnew)
+  colnames(dfnew) = mycols
+  return (dfnew)
+}
+
+mydf_train = make_attributes(df_train,mycols,T)
+mydf_test = make_attributes(df_test,mycols,F)
+
+```
+
+We can now train the classifier
+
+```{r}
+library("naivebayes")
+mydf_train$Class=as.factor(mydf_train$Class)
+mydf_train$Surface=as.factor(mydf_train$Surface)
+mydf_train$Rankdiff=as.numeric(mydf_train$Rankdiff)
+mydf_train$Ptsdiff=as.numeric(mydf_train$Ptsdiff)
+model = naive_bayes(Class~.,mydf_train)
+summary(model)
+```
+
+and make predictions
+```{r}
+mydf_test$Surface=factor(mydf_test$Surface,levels(mydf_train$Surface))
+mydf_test$Rankdiff=as.numeric(mydf_test$Rankdiff)
+mydf_test$Ptsdiff=as.numeric(mydf_test$Ptsdiff)
+predictprob = predict(model,new=mydf_test, "prob")
+predictprob = predictprob[,2]
+head(predictprob)
+
+#visualise
+df_test$predictprob=round(predictprob,2)
+df_test$predictwinner=ifelse(predictprob>0.5, df_test$Winner , df_test$Loser)
+df_test
+```
+
+
+
+Continue the exercise by computing the accuracy and comparing it with the Book makers.
+
+
+
+
+
